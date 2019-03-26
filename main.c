@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <time.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 pthread_mutex_t mutex_getTicket =   PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_await =       PTHREAD_MUTEX_INITIALIZER;
@@ -57,8 +59,8 @@ void advance(void){
 void printHelp(){
     printf("./ticket N M\n");
     printf("kde:\n");
-    printf("\t\t N (int)-> pocet vlaken, ktore sa maju vytvorit\n");
-    printf("\t\t M (int)-> celkovy pocet priechodov kritickou sekciou\n");
+    printf("\t N (int)-> pocet vlaken, ktore sa maju vytvorit\n");
+    printf("\t M (int)-> celkovy pocet priechodov kritickou sekciou\n");
 }
 
 /**
@@ -72,22 +74,22 @@ void *thread(void *arg)
 	int ticket = 0;
     int M = *(int *) arg;
     unsigned int id = (unsigned int)pthread_self();
-    struct timespec ts1,ts2;
-    unsigned int seed = id;
+    struct timespec ts1;    
+
+    unsigned int seed = time(NULL)^id^getpid();
     
     ts1.tv_sec = 0;
-    ts1.tv_nsec = rand_r(&seed) % 500000000+1;
 
-    ts2.tv_sec = 0;
-    ts2.tv_nsec = rand_r(&seed) % 500000000+1;
 
     /* Přidělení lístku */
     while ((ticket = getticket()) < M) { 
-        nanosleep(&ts1, NULL);              /* Náhodné čekání v intervalu <0,0 s, 0,5 s> */
-        await(ticket);                      /* Vstup do KS */
-        printf("%d\t(%u)\n", ticket, id);   /* fflush(stdout); */
-        advance();                          /* Výstup z KS */
-        nanosleep(&ts2, NULL);              /* Náhodné čekání v intervalu <0,0 s, 0,5 s> */
+        ts1.tv_nsec = rand_r(&seed) % 500000000+1;
+        nanosleep(&ts1, NULL);                      /* Náhodné čekání v intervalu <0,0 s, 0,5 s> */
+        await(ticket);                              /* Vstup do KS */
+        printf("%d\t(%u)\n", ticket, id);           /* fflush(stdout); */
+        advance();                                  /* Výstup z KS */
+        ts1.tv_nsec = rand_r(&seed) % 500000000+1;
+        nanosleep(&ts1, NULL);                      /* Náhodné čekání v intervalu <0,0 s, 0,5 s> */
     }  
 	return (void *)0;
 }
