@@ -4,7 +4,6 @@
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdlib.h>
 #include <pthread.h>
 #include <time.h>
 #include <sys/types.h>
@@ -16,6 +15,13 @@ pthread_cond_t cond_await =         PTHREAD_COND_INITIALIZER;
 
 volatile int ticketNumb     = 0;
 volatile int actualTicket   = 0;
+
+typedef struct
+{
+    int M;
+    int id;
+} Arguments;
+
 /**
  * @brief Výstupní hodnotou této funkce je unikátní číslo lístku, který určuje pořadí vstupu do kritické sekce. 
  * První získaný lístek má hodnotu 0, další 1, 2, atd.
@@ -42,12 +48,14 @@ void await(int aenter){
     while(aenter != actualTicket){
         pthread_cond_wait(&cond_await, &mutex_await);
     }
+    //pthread_mutex_unlock(&mutex_await);
 }
 /**
  * @brief Výstup z kritické sekce, což umožní vstup jinému vláknu přes funkci await() s lístkem o jedničku vyšším,
  *      než mělo vlákno kritickou sekci právě opouštějící.
  */
 void advance(void){
+    //pthread_mutex_lock(&mutex_await);
     actualTicket ++;
     pthread_cond_broadcast(&cond_await);
     pthread_mutex_unlock(&mutex_await);
@@ -72,25 +80,24 @@ void printHelp(){
 void *thread(void *arg)
 {
 	int ticket = 0;
-    int M = *(int *) arg;
-    unsigned int id = (unsigned int)pthread_self();
+    Arguments* arguments = (Arguments*) arg;
     struct timespec ts1;    
 
-    unsigned int seed = time(NULL)^id^getpid();
+    unsigned int seed = time(NULL)^arguments->id^getpid();
     
     ts1.tv_sec = 0;
 
 
     /* Přidělení lístku */
-    while ((ticket = getticket()) < M) { 
+    while ((ticket = getticket()) < arguments->M) { 
         ts1.tv_nsec = rand_r(&seed) % 500000000+1;
-        nanosleep(&ts1, NULL);                      /* Náhodné čekání v intervalu <0,0 s, 0,5 s> */
-        await(ticket);                              /* Vstup do KS */
-        printf("%d\t(%u)\n", ticket, id);           /* fflush(stdout); */
-        advance();                                  /* Výstup z KS */
+        nanosleep(&ts1, NULL);                          /* Náhodné čekání v intervalu <0,0 s, 0,5 s> */
+        await(ticket);                                  /* Vstup do KS */
+        printf("%d\t(%u)\n", ticket, arguments->id);    /* fflush(stdout); */
+        advance();                                      /* Výstup z KS */
         ts1.tv_nsec = rand_r(&seed) % 500000000+1;
-        nanosleep(&ts1, NULL);                      /* Náhodné čekání v intervalu <0,0 s, 0,5 s> */
-    }  
+        nanosleep(&ts1, NULL);                          /* Náhodné čekání v intervalu <0,0 s, 0,5 s> */
+    } 
 	return (void *)0;
 }
 
@@ -117,9 +124,13 @@ int main(int argc, char **argv)
 
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE); 
+    
+    Arguments arguments[threadsNumb];
 
     for(int i=0; i < threadsNumb; i++){
-        pthread_create( &thread_id[i], &attr, thread, &critSecNumb );
+        arguments[i].M = critSecNumb;
+        arguments[i].id = i;
+        pthread_create( &thread_id[i], &attr, thread, &arguments[i] );
     }
 
    for(int i=0; i < threadsNumb; i++){
