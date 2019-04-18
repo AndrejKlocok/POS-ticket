@@ -1,3 +1,11 @@
+/**
+ * @file main.c
+ * @author Andrej Klocok (xkloco00@stud.fit.vutbr.cz)
+ * @brief Simple ticket algorithm
+ * @version 1.0
+ * @date 2019-04-18
+ */
+#define _GNU_SOURCE
 #define _XOPEN_SOURCE
 #define _XOPEN_SOURCE_EXTENDED 1 /* XPG 4.2 - needed for WCOREDUMP() */
 
@@ -9,13 +17,16 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+//static initialization
 pthread_mutex_t mutex_getTicket =   PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_await =       PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond_await =         PTHREAD_COND_INITIALIZER;
 
+//ticket golobal variables
 volatile int ticketNumb     = 0;
 volatile int actualTicket   = 0;
 
+//thread arguments
 typedef struct
 {
     int M;
@@ -23,8 +34,8 @@ typedef struct
 } Arguments;
 
 /**
- * @brief Výstupní hodnotou této funkce je unikátní číslo lístku, který určuje pořadí vstupu do kritické sekce. 
- * První získaný lístek má hodnotu 0, další 1, 2, atd.
+ * @brief The output value of this function is a unique ticket number that determines the order of entry to the critical section.
+ * The first received ticket is 0, the next 1, 2, etc.
  * @return int 
  */
 int getticket(void){
@@ -37,8 +48,8 @@ int getticket(void){
     return ticket;
 }
 /**
- * @brief Vstup do kritické sekce, kde parametr aenter je číslo přiděleného lístku funkcí getticket(). 
- *      Na počátku programu je vstup umožněn jen vláknu s lístkem 0. V kritické sekci může být v daném okamžiku maximálně jedno vlákno. 
+ * @brief Enter the critical section, where the aenter parameter is the assigned ticket number from getticket() function.
+ * At the beginning of the program, only a thread with ticket 0 is permitted and only one thread can be in critical section at the same time.
  * 
  * @param aenter 
  */
@@ -48,20 +59,18 @@ void await(int aenter){
     while(aenter != actualTicket){
         pthread_cond_wait(&cond_await, &mutex_await);
     }
-    //pthread_mutex_unlock(&mutex_await);
 }
 /**
- * @brief Výstup z kritické sekce, což umožní vstup jinému vláknu přes funkci await() s lístkem o jedničku vyšším,
- *      než mělo vlákno kritickou sekci právě opouštějící.
+ * @brief Output from the critical section, allowing another thread to be passed through the await() function with a ticket one higher
+ * than the thread just leaving a critical section.
  */
 void advance(void){
-    //pthread_mutex_lock(&mutex_await);
     actualTicket ++;
     pthread_cond_broadcast(&cond_await);
     pthread_mutex_unlock(&mutex_await);
 }
 /**
- * @brief 
+ * @brief Help function
  * 
  */
 void printHelp(){
@@ -72,31 +81,31 @@ void printHelp(){
 }
 
 /**
- * @brief 
+ * @brief Thread worker function
  * 
  * @param arg 
  * @return void* 
  */
 void *thread(void *arg)
 {
-	int ticket = 0;
-    Arguments* arguments = (Arguments*) arg;
-    struct timespec ts1;    
+	int ticket = 0;                                 //local var ticket
+    Arguments* arguments = (Arguments*) arg;        //get thread arguments
+    struct timespec ts1;                            //time structure
 
-    unsigned int seed = time(NULL)^arguments->id^getpid();
-    
-    ts1.tv_sec = 0;
+    unsigned int seed = time(NULL)^arguments->id^getpid();  //init seed from actual time xor id xor pid
+    ts1.tv_sec = 0;     //initialize seconds
 
 
-    /* Přidělení lístku */
+    /* Ticket assignment */
     while ((ticket = getticket()) < arguments->M) { 
         ts1.tv_nsec = rand_r(&seed) % 500000000+1;
-        nanosleep(&ts1, NULL);                          /* Náhodné čekání v intervalu <0,0 s, 0,5 s> */
-        await(ticket);                                  /* Vstup do KS */
-        printf("%d\t(%u)\n", ticket, arguments->id);    /* fflush(stdout); */
-        advance();                                      /* Výstup z KS */
+        nanosleep(&ts1, NULL);                          /* Random waiting <0,0 s, 0,5 s> */
+        await(ticket);                                  /* Enrty to KS */
+        printf("%d\t(%u)\n", ticket, arguments->id);    /* Print*/
+        fflush(stdout);
+        advance();                                      /* Return from KS */
         ts1.tv_nsec = rand_r(&seed) % 500000000+1;
-        nanosleep(&ts1, NULL);                          /* Náhodné čekání v intervalu <0,0 s, 0,5 s> */
+        nanosleep(&ts1, NULL);                          /* Random waiting <0,0 s, 0,5 s> */
     } 
 	return (void *)0;
 }
